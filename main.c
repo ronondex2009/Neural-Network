@@ -6,10 +6,10 @@ int main()
 {
 
     struct network net;
-    int length;
-    int width1;
-    int width2;
-    int width3;
+    int length = 2;
+    int width1 = 2;
+    int width2 = 50;
+    int width3 = 2;
     printf("enter desired input layer width\n");
     scanf("%d", &width1);
     printf("enter desired number of hidden layers\n");
@@ -28,22 +28,25 @@ int main()
     double errorMargin;
     scanf("%lf", &errorMargin);
     errorMargin=0.01;
+    double trainingSpeed = 0.01;
+    printf("How fast do you want your training speed to be? (recommended: 0.01 - 0.001)");
+    scanf("%lf", &trainingSpeed);
     printf("iterating...\n");
     printf("//BACKPROP////////\n\n");
     double inputs[] = { 1, 1, 0, 0, 1, 0 };
     double outputs[] = { 0, 1, 1, 1, 0, 0 };
     int i = 0;
-    while(i<=100000){
+    while(i<=10000000){
         int error;
-        error = gradientDescent(&net, inputs, outputs, 3, 0.01);
+        error = gradientDescent(&net, inputs, outputs, 3, trainingSpeed);
         if(i==1536)
             printf("hello\n");
         if(i%100==99)
-            printf("error: %lf at iteration %d\n", net.error, i+1);
+            printf("error: %lf at iteration %d using %g bytes\n", net.error, i+1, (double)net.bytesInUse);
         if(error==0)
             i++;
-        if(net.error < errorMargin)
-            break;
+        //if(net.error < errorMargin)
+            //break;
     }
     printf("error final: %lf\n", net.error);
     freeNetwork(&net);
