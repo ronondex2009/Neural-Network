@@ -10,7 +10,7 @@ int main()
     int width1;
     int width2;
     int width3;
-    /*printf("enter desired input layer width\n");
+    printf("enter desired input layer width\n");
     scanf("%d", &width1);
     printf("enter desired number of hidden layers\n");
     scanf("%d", &length);
@@ -18,8 +18,7 @@ int main()
     scanf("%d", &width2);
     printf("enter desired output layer width\n");
     scanf("%d", &width3);
-    if(setupNetwork(&net, length, width1, width2, width3)==1){*/
-    if(setupNetwork(&net, 1, 2, 10, 2)==1){
+    if(setupNetwork(&net, length, width1, width2, width3)==1){
         printf("Network memory allocation was unsuccesful.\npress enter to exit...\n");
         getchar();
         return 1;
@@ -27,7 +26,7 @@ int main()
     printf("Network memory allocation was successful and setup..\n");
     printf("How small do you want the error to be?\n");
     double errorMargin;
-    //scanf("%lf", &errorMargin);
+    scanf("%lf", &errorMargin);
     errorMargin=0.01;
     printf("iterating...\n");
     printf("//BACKPROP////////\n\n");
@@ -49,7 +48,7 @@ int main()
     printf("error final: %lf\n", net.error);
     freeNetwork(&net);
     printf("press enter to exit...\n");
-    //getchar();
+    getchar();
     return 0;
     
 }
