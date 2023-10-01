@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include <float.h>
 
 struct network
 {
@@ -102,11 +101,29 @@ void freeNetwork(struct network *networkstruct)
 
 double sigmoid(double x)
 {
-    return 1/(1+exp(-x));
+    double result = 1/(1+exp(-x));
+    if(!isfinite(result))
+        return 0;
+    return result;
 }
 double sigmoidDer(double x)
 {
-    return sigmoid(x)*(1-sigmoid(x));
+    double result = sigmoid(x)*(1-sigmoid(x));
+    if(!isfinite(result))
+        return 1;
+    return result;
+}
+double ReLU(double x)
+{
+    double result = (double)(x>=0) ? x: x;
+    if(!isfinite(result)) //ReLU is not used in the code because it causes exploding gradients.
+        return 1;           //feel free to use ReLU in a fork if you wish; but I have not included it in my own network.
+    return result;
+}
+double ReLUDer(double x)
+{
+    double result = (double)(x>=0) ? 1: 1;
+    return result;
 }
 
 //propogate the network
@@ -145,7 +162,7 @@ void propogate(struct network net, double inputs[])
             net.outputR[j] += net.hiddenN[(net.hiddenLength-1)*net.hiddenWidth+i]*net.toOutputW[i*net.outputWidth+j];
         }
     }
-    for(int i=0; i<net.hiddenWidth; i++){
+    for(int i=0; i<net.outputWidth; i++){
         net.outputR[i] += net.outputB[i];
         net.outputN[i] = sigmoid(net.outputR[i]);
     }
@@ -173,6 +190,7 @@ double gradientDescent(struct network net, double inputs[], double outputs[], in
         for(int i=0; i<net.outputWidth; i++){
             costOut[i] = (outputs[example*net.outputWidth+i]-net.outputN[i]);
             net.error += fabs(costOut[i])/examples/net.outputWidth;
+            printf("%lf\n", net.error);
         }
         for(int i=(net.hiddenLength-1); i>=0; i--){
             for(int j=0; j<net.hiddenWidth; j++){
@@ -247,49 +265,3 @@ double gradientDescent(struct network net, double inputs[], double outputs[], in
 }
 
 
-int main()
-{
-
-    struct network net;
-    int length;
-    int width1;
-    int width2;
-    int width3;
-    /*printf("enter desired input layer width\n");
-    scanf("%d", &width1);
-    printf("enter desired number of hidden layers\n");
-    scanf("%d", &length);
-    printf("enter desired hidden layer width\n");
-    scanf("%d", &width2);
-    printf("enter desired output layer width\n");
-    scanf("%d", &width3);
-    if(setupNetwork(&net, length, width1, width2, width3)==1){*/
-    if(setupNetwork(&net, 100, 2, 2, 2)==1){
-        printf("Network memory allocation was unsuccesful.\nEnter anything to exit.");
-        //scanf("%c");
-        return 1;
-    }
-    printf("Network memory allocation was successful and setup..\n");
-    printf("How small do you want the error to be?\n");
-    double errorMargin;
-    //scanf("%lf", &errorMargin);
-    errorMargin=0.01;
-    printf("iterating...\n");
-    printf("//BACKPROP////////\n\n");
-    double inputs[] = { 1, 1, 0, 0, 1, 1 };
-    double outputs[] = { 0, 1, 1, 1, 0, 1 };
-    for(int i=0; i < 1000000; i++){
-        double error = gradientDescent(net, inputs, outputs, 2, 0.1);
-        if(i==1536)
-            printf("hello\n");
-        if(i%100==99)
-            printf("error: %lf at iteration %d\n", error, i+1);
-        if(error < errorMargin)
-            break;
-    }
-    freeNetwork(&net);
-    printf("enter anything to exit...\n");
-    //scanf("%c");
-    return 0;
-    
-}
