@@ -1,37 +1,5 @@
 /*
-Multilayer Perceptron Neural Network (MLP) by Ronan Kai Guin Adkins:
-    You are free to use, copy, and modify this program.
-    If used, please credit me (but you don't have to!)
-Details:
-    This is an MLP network (a feed-forward neural network with multiple
-    layers and non-linearity) that has the following:
-        - Leaky ReLU for all but last layer
-        - Output layer uses Sigmoid
-        - regularization (may be disabled) ...
-            > Not a conventional type (L1 or L2);
-            > All parameters except the output
-            weights and biases, go through a nonlinear 
-            tanh function that has been sized up to
-            10,000. The main purpose of this is to
-            solve the "exploding gradients" problem
-            that is common with ReLU.
-        - Gradient Descent Backpropogation
-        - Check how much memory is allocated to the network:
-            > "struct network net; net.bytesInUse;"
-            > this value is for the user. program does
-            not use it.
-    
-    1) initialize new network struct POINTER    "struct net *network;"
-    2) use function "setupNetwork" to build     "int err = setupNetwork(&network, int hiddenLayerLength, int inputLayerWidth, int hiddenWidth, int outputWidth);"
-        * returns 1 if it is unable to alloc    "if (err != 0) //HANDLE ERROR HERE//"
-    3) train..                                       --go to BACKPROP training--
-    4) propogate with inputs                    "propogate(&network, double inputs[]);"
-        * you can access output through struct  "outputs[i] = net.outputN[i];"
-    ---BACKPROP---
-    1) make input and output training set       "double inputs[input_layer_width × training_examples] = { ... }"
-        * they may be different sizes.          "double outputs[output_layer_width × training_examples] = { ... }"
-    2) backprop                                 "int err = gradientDescent(&network, double inputs[], double outputs[], int training_examples, double training_speed);"
-        * training speed should be around 0.01 - 0.001.
+kill me
 */
 
 #include <stdio.h>
@@ -39,10 +7,41 @@ Details:
 #include <math.h>
 #include <string.h>
 
-int UseRegularization = 1; //1 on, 0 off (please remember that this is used to prevent exploding gradients)
-// gradients becomimg NaN, Ind, or Inf is caused by exploding gradients.
-// these issues may not occur for simpler networks. May also be used for overfitting prevention.
+#pragma pack(1)
 
+static const double max = 1000; //unused
+static double DEBUG_MODE = 0;
+
+double GaussianRandom(double mu, double sigma)
+{
+    double U1, U2, W, mult;
+    static double X1, X2;
+    static int call;
+    if(call==1)
+    {
+        call = !call;
+        if(DEBUG_MODE)
+            printf("[GAUSSIAN_CALL]: %d\n[GAUSSIAN_SIGMA]: %0.50lf\n[GAUSSIAN_RESULT]: %0.50lf\n", !call, sigma, (mu + (sigma * X2)));
+        return mu + (sigma * X2);
+    }
+    do
+    {
+        U1 = -1 + ((double) rand () / RAND_MAX) * 2;
+        U2 = -1 + ((double) rand () / RAND_MAX) * 2;
+        W = pow(U1, 2) + pow(U2, 2);
+    } while(W >= 1 || W == 0);
+    mult = sqrt((-2*log(W)) / W);
+    X1 = U1 * mult;
+    X2 = U2 * mult;
+    call = !call;
+    if(DEBUG_MODE)
+        printf("[GAUSSIAN_CALL]: %d\n[GAUSSIAN_SIGMA]: %0.50lf\n[GAUSSIAN_RESULT]: %0.50lf\n", !call, sigma, (mu + (sigma * X1)));
+    return mu + (sigma * X1);
+}
+
+enum NETWORK_PARAMETERS{
+    dynamic_regularize, dynamic_trainspeed, backprop_dont_thread, setup_dont_initialize_parameters, backprop_dont_modify_parameters, propogate_dont_thread, never_thread
+};
 struct network
 {
     int inputWidth;
@@ -121,17 +120,20 @@ int setupNetwork(struct network *networkstruct, int length, int widthIn, int wid
     networkstruct->hiddenW = (double*)callocTrack(widthHidden*widthHidden*length, sizeof(double), &errorcode, &networkstruct->bytesInUse);
     networkstruct->toOutputW = (double*)callocTrack(widthHidden*widthOut, sizeof(double), &errorcode, &networkstruct->bytesInUse);
 
+    double result = 0;
     if(!errorcode==0)
     {
-        freeNetwork(sizeof(networkstruct));
+        freeNetwork(networkstruct);
         return 1;
     }
     
+    //standard initialization
     for(int j = 0; j < widthIn; j++)
     {
         for(int k = 0; k < widthHidden; k++)
         {
-            networkstruct->inputW[j*widthHidden+k] = (double)(rand() % 1000)/500-1*2;
+            result = GaussianRandom(0, sqrt(1.0/widthIn));
+            networkstruct->inputW[j*widthHidden+k] = result;
         }
     }
     for(int i = 0; i < length; i++)
@@ -140,17 +142,19 @@ int setupNetwork(struct network *networkstruct, int length, int widthIn, int wid
         {
             for(int k = 0; k < widthHidden; k++)
             {
-                networkstruct->hiddenW[(i*widthHidden*widthHidden)+(j*widthHidden)+k] = (double)(rand() % 1000)/500-1*2;
+                result = GaussianRandom(0, sqrt(1.0/widthIn));
+                networkstruct->hiddenW[(i*widthHidden*widthHidden)+(j*widthHidden)+k] = result;
             }
-            networkstruct->hiddenB[i*widthHidden+j] = (double)(rand() % 1000)/500-1*2;
+            networkstruct->hiddenB[i*widthHidden+j] = GaussianRandom(0, 1);
         }
     }
     for(int j = 0; j < widthOut; j++)
     {
-        networkstruct->outputB[j] = (double)(rand() % 1000)/500-1*2;
+        networkstruct->outputB[j] = GaussianRandom(0, 1);
         for(int i=0; i < widthHidden; i++)
         {
-            networkstruct->toOutputW[i*widthOut+j] = (double)(rand() % 1000)/500-1*2;
+            result = GaussianRandom(0, sqrt(2.0/widthIn));
+            networkstruct->toOutputW[i*widthOut+j] = result; //this is not a mistake
         }
     }
     return 0;
@@ -158,42 +162,73 @@ int setupNetwork(struct network *networkstruct, int length, int widthIn, int wid
 
 double sigmoid(double x) //my second favorite function
 {
-    double result = 1/(1+exp(-x));
-    if(!isfinite(result))
-        return 0.5;
+    double result;
+    result = 1/(1+exp(-x));
     return result;
 }
 double sigmoidDer(double x) //my first favority function
 {
     double result = sigmoid(x)*(1-sigmoid(x));
     if(!isfinite(result))
-        return 1;
+        return 0;
     return result;
 }
 double ReLU(double x) //why..?
 {
-    double result = (double)(x>=0) ? x: x*0.1; //"leaky" ReLU
-    //if(!isfinite(result))
-    //    return 1;
+    double result = (double)(x>=0) ? x: x*0.01; //"leaky" ReLU
+    if(!isfinite(result))
+        return 1;
     return result;
 }
 double ReLUDer(double x) //why!?
 {
-    double result = (double)(x>=0) ? 1: 0.1;
+    double result = (double)(x>=0) ? 1: 0.01;
     return result;
 }
-double ParameterSquish(double x) //My own take on regularlization!
-{ //this is basically a tanh function sized up by ten thousand. Used to prevent weights becoming NaN, Inf, or Ind.
-    double result;
-    result = 10000* ( (exp(x/10000)-exp(-x/10000))/(exp(x/10000)+exp(-x/10000)) );
-    return result;
-}
-double ParameterSquishDer(double x) //why did I need this again..?
+
+double paramClipping(double x) //some extra aprotection against exploding gradients.
 {
     double result;
-    result = 1-pow(ParameterSquish(x)/10000, 2);
+    result = max*((exp(x/max)-exp(-x/max))/(exp(x/max)+exp(-x/max)));
+    if(isnan(result))
+        return (x>0) ? max: -max;
+    if(DEBUG_MODE)
+        printf("[PARAM_CLIPPING_OUTPUT]: %0.50lf\n", result);
     return result;
 }
+double sumOfWeightsIntoNeuron(struct network* net, int i, int j)
+{
+    double result = 0;
+    if(i==0) //weights that go to first hidden layer.
+        for(int k=0; k<net->inputWidth; k++)
+            result += fabs(net->inputW[k*net->hiddenWidth+j]);
+    if(i==-1) //THIS DENOTES THAT IT IS toOutputW WEIGHTS!!!!
+        for(int k=0; k<net->hiddenWidth; k++)
+            result += fabs(net->toOutputW[k*net->outputWidth+j]);
+    if(i > 0)
+        for(int k=0; k<net->hiddenWidth; k++)//{
+            result += fabs(net->hiddenW[((i-1)*net->hiddenWidth*net->hiddenWidth)+(k*net->hiddenWidth)+j]);
+    if(i==net->hiddenLength-1)
+        for(int k=0; k<net->hiddenWidth; k++)//{
+            result += fabs(net->toOutputW[j*net->outputWidth+k]);
+    if(DEBUG_MODE)
+        printf("[L2_REG_OUTPUT]: %0.50lf\n", result*result);
+    return result;
+}
+double L2(struct network* net)
+{
+    double result = 0;
+    for(int i=0; i<net->hiddenLength; i++){
+        for(int j=0; j<net->hiddenWidth; j++){
+            result += sumOfWeightsIntoNeuron(net, i, j);
+        }
+    }
+    for(int i=0; i<net->outputWidth; i++){
+        result += sumOfWeightsIntoNeuron(net, net->hiddenLength, i);
+    }
+    return result;
+}
+
 //propogate the network
 void propogate(struct network *net, double inputs[])
 {    
@@ -213,6 +248,8 @@ void propogate(struct network *net, double inputs[])
     for(int j=0; j<net->hiddenWidth; j++){
         net->hiddenR[j] += net->hiddenB[j];
         net->hiddenN[j] = ReLU(net->hiddenR[j]);
+        if(DEBUG_MODE)
+            printf("[PROPOGATE_HIDDEN_RAW_(FROMINPUT)] %d: %0.50lf\n[PROPOGATE_HIDDEN_NEURON_(FROMINPUT)] %d: %0.50lf\n", j, net->hiddenR[j], j, net->hiddenN[j]);
     }
     for(int i=1; i<net->hiddenLength; i++){
         for(int j=0; j<net->hiddenWidth; j++){
@@ -223,6 +260,8 @@ void propogate(struct network *net, double inputs[])
         for(int j=0; j<net->hiddenWidth; j++){
             net->hiddenR[i*net->hiddenWidth+j] += net->hiddenB[i*net->hiddenWidth+j];
             net->hiddenN[i*net->hiddenWidth+j] = ReLU(net->hiddenR[i*net->hiddenWidth+j]);
+            if(DEBUG_MODE)
+                printf("[PROPOGATE_HIDDEN_RAW] %d: %0.50lf\n[PROPOGATE_HIDDEN_NEURON] %d: %0.50lf\n", i*net->hiddenWidth+j, net->hiddenR[i*net->hiddenWidth+j], i*net->hiddenWidth+j, net->hiddenN[i*net->hiddenWidth+j]);
         }
     }
     for(int i=0; i<net->hiddenWidth; i++){
@@ -233,11 +272,13 @@ void propogate(struct network *net, double inputs[])
     for(int i=0; i<net->outputWidth; i++){
         net->outputR[i] += net->outputB[i];
         net->outputN[i] = sigmoid(net->outputR[i]);
+        if(DEBUG_MODE)
+            printf("[PROPOGATE_OUTPUT_RAW] %d: %0.50lf\n[PROPOGATE_OUTPUT_NEURON] %d: %0.50lf\n", i, net->outputR[i], i, net->outputN[i]);
     }
 }
 
 //backpropogate over examples
-int gradientDescent(struct network *net, double inputs[], double outputs[], int examples, double trainingSpeed)
+int gradientDescent(struct network *net, double inputs[], double outputs[], int examples, double trainingSpeed, double regularization)
 {
     int errorCode = 0;
     //allocate memory to gradient arrays
@@ -250,83 +291,164 @@ int gradientDescent(struct network *net, double inputs[], double outputs[], int 
     double *costOut = (double*)callocTrack(net->outputWidth, sizeof(double), &errorCode, &net->bytesInUse);
     //return code 1 if allocation fails.
     net->error = 0;
+    double instances;
+    instances = ((net->hiddenWidth*net->inputWidth)+(pow(net->hiddenWidth,2))+(net->hiddenWidth*net->outputWidth));
+    
+    //BACKPROPOGATE EXAMPLES
+    #pragma omp parallel for
     for(int example = 0; example < examples; example++)
     {
+        //FEEDFORWARD
         double currentInputs[net->inputWidth];
         for(int i=0; i<net->inputWidth; i++){
             currentInputs[i] = inputs[example*net->inputWidth+i];
+            if(DEBUG_MODE)
+                printf("[BACKPROP_SETINPUTS] %d: %0.50lf\n", i, currentInputs[i]);
         }
         propogate(net, currentInputs);
-        //calculate loss
+        
+        //CALCULATE TOTAL GENERAL LOSS
         for(int i=0; i<net->outputWidth; i++){
             costOut[i] = (outputs[example*net->outputWidth+i]-net->outputN[i]);
-            net->error += fabs(costOut[i])/examples/net->outputWidth;
+            net->error += pow(fabs(costOut[i])/examples/net->outputWidth,2);
+            //net->error += ((regularization/instances)*L2(net));
+            if(DEBUG_MODE)
+                printf("[BACKPROP_LOSS_OUTPUT_GENERAL] %d: %0.50lf\n", i, costOut[i]);
         }
         for(int i=(net->hiddenLength-1); i>=0; i--){
             for(int j=0; j<net->hiddenWidth; j++){
-                if(i<net->hiddenLength-2)
+                if(i<net->hiddenLength-2){
                     for(int k=0; k<net->hiddenWidth; k++)
                         costHidden[i*net->hiddenWidth+j] += costHidden[(i+1)*net->hiddenWidth+k] * net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k];
-                else
+                    if(DEBUG_MODE)
+                        printf("[BACKPROP_LOSS_HIDDEN_GENERAL] %d: %0.50lf\n", i*net->hiddenWidth+j, costHidden[i*net->hiddenWidth+j]);
+                }else{
                     for(int k=0; k<net->outputWidth; k++)
                         costHidden[i*net->hiddenWidth+j] += costOut[k] * net->toOutputW[j*net->outputWidth+k];
+                    if(DEBUG_MODE)
+                        printf("[BACKPROP_LOSS_HIDDEN_GENERAL_(FROMOUTPUT)] %d: %0.50lf\n", i*net->hiddenWidth+j, costHidden[i*net->hiddenWidth+j]);
+                }
             }
         }
-        for(int i=0; i<net->inputWidth; i++){
-            for(int j=0; j<net->hiddenWidth; j++){
-            }
-        }
-        
-        //update biases and weights n stuff
 
+        //CALCULATE TOTAL WEIGHT AND BIAS LOSS
         for(int i=0; i<net->inputWidth; i++){
             for(int j=0; j<net->hiddenWidth; j++){
-                inputWGradient[i] += ( net->inputN[i] * (costHidden[j]) );
+                inputWGradient[i*net->hiddenWidth+j] += ( net->inputN[i] * (costHidden[j]) );
+                inputWGradient[i*net->hiddenWidth+j] += (inputWGradient[i*net->hiddenWidth+j]>0) ? (regularization/instances): -(regularization/instances); //implementation of L2 Regularization
+                if(DEBUG_MODE)
+                    printf("[BACKPROP_LOSS_INPUT_WEIGHT] %d: %0.50lf\n", i, inputWGradient[i]);
             }
         }
         for(int i=0; i<net->hiddenLength; i++){
             for(int j=0; j<net->hiddenWidth; j++){
                 if(i < net->hiddenLength-1){
-                    for(int k=0; k<net->hiddenWidth; k++)
-                        hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += ( net->hiddenN[i*net->hiddenWidth+j] * costHidden[(i+1)*net->hiddenWidth+k] * ReLUDer(net->hiddenR[(i+1)*net->hiddenWidth+k])); 
+                    for(int k=0; k<net->hiddenWidth; k++){
+                        hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += ( net->hiddenN[i*net->hiddenWidth+j] * costHidden[(i+1)*net->hiddenWidth+k] 
+                            * ReLUDer(net->hiddenR[(i+1)*net->hiddenWidth+k]));
+                        if(DEBUG_MODE)
+                            printf("[BACKPROP_LOSS_HIDDEN_WEIGHT] %d: %0.50lf\n", (i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k, hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]);
+                        hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += (hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]>0) 
+                            ? (regularization/instances): -(regularization/instances); //implementation of L2 Regularization
+                    }
                 }else{
-                    for(int k=0; k<net->outputWidth; k++)
-                        toWGradient[(j*net->outputWidth)+k] += ( net->hiddenN[i*net->hiddenWidth+j] * costOut[k] * sigmoidDer(net->outputR[k]) ); 
+                    for(int k=0; k<net->outputWidth; k++){
+                        toWGradient[(j*net->outputWidth)+k] += ( net->hiddenN[i*net->hiddenWidth+j] * costOut[k] * sigmoidDer(net->outputR[k]) );
+                        if(DEBUG_MODE)
+                            printf("[BACKPROP_LOSS_TOOUTPUT_WEIGHT] %d: %0.50lf\n", (j*net->outputWidth)+k, toWGradient[(j*net->outputWidth)+k]);
+                        toWGradient[(j*net->outputWidth)+k] = (toWGradient[(j*net->outputWidth)+k]>0) ? (regularization/instances): -(regularization/instances);
+                    }
                 }
                 hiddenBGradient[i*net->hiddenWidth+j] += ( ReLUDer(net->hiddenR[i*net->hiddenWidth+j]) * costHidden[i*net->hiddenWidth+j] );
-
+                if(DEBUG_MODE)
+                    printf("[BACKPROP_LOSS_HIDDEN_BIAS] %d: %0.50lf\n", i*net->hiddenWidth+j, hiddenBGradient[i*net->hiddenWidth+j]);
             }
         }
         for(int i=0; i<net->outputWidth; i++){
             outputBGradient[i] += ( sigmoidDer(net->outputR[i]) * costOut[i] );
+            if(DEBUG_MODE)
+                printf("[BACKPROP_LOSS_HIDDEN_BIAS] %d: %0.50lf\n", i, outputBGradient[i]);
         }
+        //CLEAR COST FOR NEXT EXAMPLE; WEIGHT AND BIAS GRADIENT PRESERVED FOR UPDATING NETWORK
         memset(costOut, 0, net->outputWidth*sizeof(double));
         memset(costHidden, 0, net->hiddenWidth*net->hiddenLength*sizeof(double));
     }
     
+    double normalization_value = 1;
+
+    //NORMALIZATION VAL FOR GRADIENT CLIPPING
     for(int i=0; i<net->inputWidth; i++){
         for(int j=0; j<net->hiddenWidth; j++){
-            net->inputW[i*net->hiddenWidth+j] += trainingSpeed * inputWGradient[i*net->hiddenWidth+j];
-            if(UseRegularization) net->inputW[i*net->hiddenWidth+j] = ParameterSquish(net->inputW[i*net->hiddenWidth+j]);
+            normalization_value = (fabs(inputWGradient[i])>normalization_value) ? fabs(inputWGradient[i]): normalization_value;
         }
     }
     for(int i=0; i<net->hiddenLength; i++){
         for(int j=0; j<net->hiddenWidth; j++){
-            if(i < net->hiddenLength-1)
+            if(i < (net->hiddenLength-1)){
+                for(int k=0; k<net->hiddenWidth; k++)
+                    normalization_value = (fabs(hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k])>normalization_value) 
+                        ? fabs(hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]): normalization_value;
+            }else{
+                for(int k=0; k<net->outputWidth; k++)
+                    normalization_value = (fabs(toWGradient[(j*net->outputWidth)+k])>normalization_value) ? fabs(toWGradient[(j*net->outputWidth)+k]): normalization_value;
+            }
+            normalization_value = (fabs(hiddenBGradient[i*net->hiddenWidth+j])>normalization_value) ? fabs(hiddenBGradient[i*net->hiddenWidth+j]): normalization_value;
+        }
+    }
+    for(int i=0; i<net->outputWidth; i++){
+        normalization_value = (fabs(outputBGradient[i])>normalization_value) ? fabs(outputBGradient[i]): normalization_value;
+    }
+    if(DEBUG_MODE)
+        printf("[BACKPROP_LOSS_CLIPPING]: %0.50lf\n", normalization_value);
+    //GRADIENT CLIPPING BY NORM
+    for(int i=0; i<net->inputWidth; i++){
+        for(int j=0; j<net->hiddenWidth; j++){
+            inputWGradient[i*net->hiddenWidth+j] /= normalization_value;
+        }
+    }
+    for(int i=0; i<net->hiddenLength; i++){
+        for(int j=0; j<net->hiddenWidth; j++){
+            if(i < (net->hiddenLength-1)){
+                for(int k=0; k<net->hiddenWidth; k++)
+                    hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] /= normalization_value;
+            }else{
+                for(int k=0; k<net->outputWidth; k++)
+                    toWGradient[(j*net->outputWidth)+k] /= normalization_value;
+            }
+            hiddenBGradient[i*net->hiddenWidth+j] /= normalization_value;
+        }
+    }
+    for(int i=0; i<net->outputWidth; i++){
+        outputBGradient[i] /= normalization_value;
+    }
+
+    //UPDATE THE NETWORK
+    for(int i=0; i<net->inputWidth; i++){
+        for(int j=0; j<net->hiddenWidth; j++){
+            net->inputW[i*net->hiddenWidth+j] += trainingSpeed * inputWGradient[i*net->hiddenWidth+j];
+            //net->inputW[i*net->hiddenWidth+j] = paramClipping(net->inputW[i*net->hiddenWidth+j]);
+        }
+    }
+    for(int i=0; i<net->hiddenLength; i++){
+        for(int j=0; j<net->hiddenWidth; j++){
+            if(i < (net->hiddenLength-1)){
                 for(int k=0; k<net->hiddenWidth; k++){
-                        net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += trainingSpeed * hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k];
-                        if(UseRegularization) net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] = ParameterSquish(net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]);
-                }else{
-                    for(int k=0; k<net->outputWidth; k++){
-                        net->toOutputW[(j*net->outputWidth)+k] += trainingSpeed * toWGradient[(j*net->outputWidth)+k]; 
-                    }
+                    net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += trainingSpeed * hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k];
+                    //net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] = paramClipping(net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]);
                 }
-                net->hiddenB[i*net->hiddenWidth+j] += trainingSpeed * hiddenBGradient[i*net->hiddenWidth+j];
-                if(UseRegularization) net->hiddenB[i*net->hiddenWidth+j] = ParameterSquish(net->hiddenB[i*net->hiddenWidth+j]);
+            }else{
+                for(int k=0; k<net->outputWidth; k++){
+                        net->toOutputW[(j*net->outputWidth)+k] += trainingSpeed * toWGradient[(j*net->outputWidth)+k]; 
+                       //net->toOutputW[(j*net->outputWidth)+k] = paramClipping(net->toOutputW[(j*net->outputWidth)+k]);
+                    }
+            }
+            net->hiddenB[i*net->hiddenWidth+j] += trainingSpeed * hiddenBGradient[i*net->hiddenWidth+j];
+            //net->hiddenB[i*net->hiddenWidth+j] = paramClipping(net->hiddenB[i*net->hiddenWidth+j]);
         }
     }
     for(int i=0; i<net->outputWidth; i++){
         net->outputB[i] += trainingSpeed * outputBGradient[i];
+        //net->outputB[i] = paramClipping(net->outputB[i]);
     }
     freeTrack(net->hiddenWidth*net->hiddenLength, sizeof(double), hiddenBGradient, &net->bytesInUse);
     freeTrack(net->hiddenWidth*net->hiddenWidth*net->hiddenLength, sizeof(double), hiddenWGradient, &net->bytesInUse);
