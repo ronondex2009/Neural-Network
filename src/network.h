@@ -1,9 +1,10 @@
-static const double max;
-static double DEBUG_MODE;
+#ifndef MLP_NEURAL_NETWORK_RONO_H
+#define MLP_NEURAL_NETWORK_RONO_H
+
+//static const double max; <------ this value was used for paramClipping(); deprecated
+double DEBUG_MODE;
 double GaussianRandom(double, double);
-enum NETWORK_PARAMETERS{
-    dynamic_regularize, dynamic_trainspeed, backprop_dont_thread, setup_dont_initialize_parameters, backprop_dont_modify_parameters, propogate_dont_thread, never_thread
-};
+enum NETWORK_PARAMETERS;
 struct network
 {
     int inputWidth;
@@ -35,5 +36,7 @@ double ReLUDer(double);
 //double paramClipping(double); DEPRECATED!!!
 double sumOfWeightsIntoNeuron(struct network*, int, int);
 double L2(struct network*);
-void propogate(struct network*, int, int);
+void propogate(struct network*, double[]);
 int gradientDescent(struct network*, double[], double[], int, double, double);
+
+#endif

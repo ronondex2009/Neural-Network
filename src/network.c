@@ -1,7 +1,29 @@
 /*
-kill me
+    MLP neural network by ronondex2009
+        {
+            You can find an example of how to use this network
+            in main.c!
+            Please credit me if you use this. Functionality is
+            not garanteed, still in development.
+        };
+    Description
+        {
+            Uses gradient descent for training. Evolution-based
+            training funtionality will be added soon.
+            Uses L2 ridge regularization*
+                * the penalty for each weight is heavier for
+                larger weights. I found this to work much more
+                effectively than distributed evenly.
+            Xavier initialization
+            ReLU for all layers
+            Sigmoid for output layers
+        };
+    Open Source: commits will be read if I see them!
+
+    CC: Creative Commons Liscense
 */
 
+#include "network.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -10,7 +32,7 @@ kill me
 #pragma pack(1)
 
 static const double max = 1000; //unused
-static double DEBUG_MODE = 0;
+double DEBUG_MODE = 0;
 
 double GaussianRandom(double mu, double sigma)
 {
@@ -41,26 +63,6 @@ double GaussianRandom(double mu, double sigma)
 
 enum NETWORK_PARAMETERS{
     dynamic_regularize, dynamic_trainspeed, backprop_dont_thread, setup_dont_initialize_parameters, backprop_dont_modify_parameters, propogate_dont_thread, never_thread
-};
-struct network
-{
-    int inputWidth;
-    int outputWidth;
-    int hiddenWidth;
-    int hiddenLength;
-    unsigned int bytesInUse;
-    double error;
-    double *inputN; //input neurons 1D
-    double *outputN; //output neurons 1D
-    double *outputB; //output biases 1D
-    double *inputR; //input raw neurons 1D
-    double *outputR; //output ... 1D
-    double *inputW; //input weights 2D
-    double *hiddenN; // 2D
-    double *hiddenB; // 2D
-    double *hiddenR; // 2D
-    double *hiddenW; // 3D
-    double *toOutputW; //2D
 };
 
 void* callocTrack(unsigned int size, unsigned int size_t, int* errorCode, unsigned int* bytesUsedTotal)
@@ -145,12 +147,12 @@ int setupNetwork(struct network *networkstruct, int length, int widthIn, int wid
                 result = GaussianRandom(0, sqrt(1.0/widthIn));
                 networkstruct->hiddenW[(i*widthHidden*widthHidden)+(j*widthHidden)+k] = result;
             }
-            networkstruct->hiddenB[i*widthHidden+j] = GaussianRandom(0, 1);
+            networkstruct->hiddenB[i*widthHidden+j] = 0.0;
         }
     }
     for(int j = 0; j < widthOut; j++)
     {
-        networkstruct->outputB[j] = GaussianRandom(0, 1);
+        networkstruct->outputB[j] = 0.0;
         for(int i=0; i < widthHidden; i++)
         {
             result = GaussianRandom(0, sqrt(2.0/widthIn));
@@ -166,14 +168,14 @@ double sigmoid(double x) //my second favorite function
     result = 1/(1+exp(-x));
     return result;
 }
-double sigmoidDer(double x) //my first favority function
+double sigmoidDer(double x) //my first favorite function
 {
     double result = sigmoid(x)*(1-sigmoid(x));
     if(!isfinite(result))
         return 0;
     return result;
 }
-double ReLU(double x) //why..?
+double ReLU(double x) //why do people just not use linearity?
 {
     double result = (double)(x>=0) ? x: x*0.01; //"leaky" ReLU
     if(!isfinite(result))
@@ -186,16 +188,16 @@ double ReLUDer(double x) //why!?
     return result;
 }
 
-double paramClipping(double x) //some extra aprotection against exploding gradients.
-{
-    double result;
+/*double paramClipping(double x) //DEPRECATED: not an effective solution to exploding gradients
+{                              // was originally intended to fix NaN and Inf by clipping parameters.
+    double result;             // this only broke training and didn't even fix the problem.
     result = max*((exp(x/max)-exp(-x/max))/(exp(x/max)+exp(-x/max)));
-    if(isnan(result))
+    if(isnan(result))          // cautionary tale: don't do this
         return (x>0) ? max: -max;
     if(DEBUG_MODE)
         printf("[PARAM_CLIPPING_OUTPUT]: %0.50lf\n", result);
     return result;
-}
+}*/
 double sumOfWeightsIntoNeuron(struct network* net, int i, int j)
 {
     double result = 0;
@@ -215,7 +217,7 @@ double sumOfWeightsIntoNeuron(struct network* net, int i, int j)
         printf("[L2_REG_OUTPUT]: %0.50lf\n", result*result);
     return result;
 }
-double L2(struct network* net)
+double L2(struct network* net) //I think this is how it works..
 {
     double result = 0;
     for(int i=0; i<net->hiddenLength; i++){
@@ -226,11 +228,11 @@ double L2(struct network* net)
     for(int i=0; i<net->outputWidth; i++){
         result += sumOfWeightsIntoNeuron(net, net->hiddenLength, i);
     }
-    return result;
+    return result*result;
 }
 
 //propogate the network
-void propogate(struct network *net, double inputs[])
+void propogate(struct network* net, double inputs[])
 {    
     memset(net->inputR, 0, net->inputWidth*sizeof(double));
     memset(net->outputR, 0, net->outputWidth*sizeof(double));
@@ -293,9 +295,12 @@ int gradientDescent(struct network *net, double inputs[], double outputs[], int 
     net->error = 0;
     double instances;
     instances = ((net->hiddenWidth*net->inputWidth)+(pow(net->hiddenWidth,2))+(net->hiddenWidth*net->outputWidth));
-    
+    double L2Val;
+    L2Val = ((regularization/instances)*L2(net));
+    double L2Der;
+    L2Der = 2.0*sqrt(L2Val);
+    //net->error += ((regularization/instances)*L2(net));
     //BACKPROPOGATE EXAMPLES
-    #pragma omp parallel for
     for(int example = 0; example < examples; example++)
     {
         //FEEDFORWARD
@@ -309,9 +314,8 @@ int gradientDescent(struct network *net, double inputs[], double outputs[], int 
         
         //CALCULATE TOTAL GENERAL LOSS
         for(int i=0; i<net->outputWidth; i++){
-            costOut[i] = (outputs[example*net->outputWidth+i]-net->outputN[i]);
-            net->error += pow(fabs(costOut[i])/examples/net->outputWidth,2);
-            //net->error += ((regularization/instances)*L2(net));
+            costOut[i] = 2*(outputs[example*net->outputWidth+i]-net->outputN[i]);
+            net->error += pow(fabs(costOut[i]/2)/examples/net->outputWidth,2);
             if(DEBUG_MODE)
                 printf("[BACKPROP_LOSS_OUTPUT_GENERAL] %d: %0.50lf\n", i, costOut[i]);
         }
@@ -335,7 +339,8 @@ int gradientDescent(struct network *net, double inputs[], double outputs[], int 
         for(int i=0; i<net->inputWidth; i++){
             for(int j=0; j<net->hiddenWidth; j++){
                 inputWGradient[i*net->hiddenWidth+j] += ( net->inputN[i] * (costHidden[j]) );
-                inputWGradient[i*net->hiddenWidth+j] += (inputWGradient[i*net->hiddenWidth+j]>0) ? (regularization/instances): -(regularization/instances); //implementation of L2 Regularization
+                inputWGradient[i*net->hiddenWidth+j] += (net->inputW[i*net->hiddenWidth+j]>0) 
+                    ? net->inputW[i*net->hiddenWidth+j]*L2Der*(regularization/instances): net->inputW[i*net->hiddenWidth+j]*L2Der*(regularization/instances); //implementation of L2 Regularization
                 if(DEBUG_MODE)
                     printf("[BACKPROP_LOSS_INPUT_WEIGHT] %d: %0.50lf\n", i, inputWGradient[i]);
             }
@@ -348,15 +353,17 @@ int gradientDescent(struct network *net, double inputs[], double outputs[], int 
                             * ReLUDer(net->hiddenR[(i+1)*net->hiddenWidth+k]));
                         if(DEBUG_MODE)
                             printf("[BACKPROP_LOSS_HIDDEN_WEIGHT] %d: %0.50lf\n", (i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k, hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]);
-                        hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += (hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]>0) 
-                            ? (regularization/instances): -(regularization/instances); //implementation of L2 Regularization
+                        hiddenWGradient[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k] += (net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]>0) 
+                            ? net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]*L2Der*(regularization/instances):
+                            -net->hiddenW[(i*net->hiddenWidth*net->hiddenWidth)+(j*net->hiddenWidth)+k]*L2Der*(regularization/instances); //implementation of L2 Regularization
                     }
                 }else{
                     for(int k=0; k<net->outputWidth; k++){
                         toWGradient[(j*net->outputWidth)+k] += ( net->hiddenN[i*net->hiddenWidth+j] * costOut[k] * sigmoidDer(net->outputR[k]) );
                         if(DEBUG_MODE)
                             printf("[BACKPROP_LOSS_TOOUTPUT_WEIGHT] %d: %0.50lf\n", (j*net->outputWidth)+k, toWGradient[(j*net->outputWidth)+k]);
-                        toWGradient[(j*net->outputWidth)+k] = (toWGradient[(j*net->outputWidth)+k]>0) ? (regularization/instances): -(regularization/instances);
+                        toWGradient[(j*net->outputWidth)+k] = (net->toOutputW[(j*net->outputWidth)+k]>0) 
+                            ? net->toOutputW[(j*net->outputWidth)+k]*L2Der*(regularization/instances): -net->toOutputW[(j*net->outputWidth)+k]*L2Der*(regularization/instances);
                     }
                 }
                 hiddenBGradient[i*net->hiddenWidth+j] += ( ReLUDer(net->hiddenR[i*net->hiddenWidth+j]) * costHidden[i*net->hiddenWidth+j] );
@@ -367,7 +374,7 @@ int gradientDescent(struct network *net, double inputs[], double outputs[], int 
         for(int i=0; i<net->outputWidth; i++){
             outputBGradient[i] += ( sigmoidDer(net->outputR[i]) * costOut[i] );
             if(DEBUG_MODE)
-                printf("[BACKPROP_LOSS_HIDDEN_BIAS] %d: %0.50lf\n", i, outputBGradient[i]);
+                printf("[BACKPROP_LOSS_OUTPUT_BIAS] %d: %0.50lf\n", i, outputBGradient[i]);
         }
         //CLEAR COST FOR NEXT EXAMPLE; WEIGHT AND BIAS GRADIENT PRESERVED FOR UPDATING NETWORK
         memset(costOut, 0, net->outputWidth*sizeof(double));
