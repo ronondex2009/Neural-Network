@@ -1,8 +1,11 @@
+// THIS VERSION IS BROKEN AND DOES NOT FUNCTION PROPERLY !!!
+// ONLY KEPT FOR ARCHIVE PURPOSES
+
 #ifndef MLP_NEURAL_NETWORK_RONO_H
 #define MLP_NEURAL_NETWORK_RONO_H
 
 //static const double max; <------ this value was used for paramClipping(); deprecated
-double DEBUG_MODE;
+static int DEBUG_MODE;
 double GaussianRandom(double, double);
 enum NETWORK_PARAMETERS;
 struct network

@@ -1,29 +1,7 @@
-/*
-    MLP neural network by ronondex2009
-        {
-            You can find an example of how to use this network
-            in main.c!
-            Please credit me if you use this. Functionality is
-            not garanteed, still in development.
-        };
-    Description
-        {
-            Uses gradient descent for training. Evolution-based
-            training funtionality will be added soon.
-            Uses L2 ridge regularization*
-                * the penalty for each weight is heavier for
-                larger weights. I found this to work much more
-                effectively than distributed evenly.
-            Xavier initialization
-            ReLU for all layers
-            Sigmoid for output layers
-        };
-    Open Source: commits will be read if I see them!
+// THIS VERSION IS BROKEN AND DOES NOT FUNCTION PROPERLY !!!
+// ONLY KEPT FOR ARCHIVE PURPOSES
 
-    CC: Creative Commons Liscense
-*/
-
-#include "network.h"
+#include "networkOld.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -32,7 +10,7 @@
 #pragma pack(1)
 
 static const double max = 1000; //unused
-double DEBUG_MODE = 0;
+static int DEBUG_MODE = 0.0;
 
 double GaussianRandom(double mu, double sigma)
 {
